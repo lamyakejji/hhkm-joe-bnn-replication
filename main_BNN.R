@@ -347,10 +347,6 @@ for (irep in seq_len(ntot)){
         yho.hat[,nr2,nr1] <- Xho.hat[,1:MM[nr1],nr1]%*%k_star 
         acc.k[,nr2,nr1] <- acc.k[,nr2,nr1]+1
       }
-      if (irep < 0.75*nburn){
-        if (acc.k[,nr2,nr1]/irep > 0.6) nuts.eps[nr1] <- 0.99*nuts.eps[nr1]
-        if (acc.k[,nr2,nr1]/irep < 0.3) nuts.eps[nr1] <- 1.01 * nuts.eps[nr1]
-      }
     } # -end loop over neurons (M) for estimation of kappa
     
     ###----------------------------------------------------------------------###
