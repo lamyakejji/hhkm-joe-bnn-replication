@@ -1,4 +1,4 @@
-### Code package: N. Hauzenberger, F. Huber, K. Klieber, & M. Marcellino (2024). Bayesian neural networks for macroeconomic analysis, *Journal of Econometrics*, 249(PART C):105843.
+### Code package: N. Hauzenberger, F. Huber, K. Klieber, & M. Marcellino (2025). Bayesian neural networks for macroeconomic analysis, *Journal of Econometrics*, 249(Part C):105843.
 
 [**Publication (open access).**](https://doi.org/10.1016/j.jeconom.2024.105843)
 
