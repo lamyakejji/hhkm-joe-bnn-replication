@@ -55,9 +55,8 @@ bnn.setup <- list(
 oos_dates <- seq(2000, 2020 + 11/12, 1/12)
 total_months <- length(oos_dates)
 
-info_sets <- c("AR", "F", "L") 
+info_sets <- c("AR1", "PCA", "L") 
 names(info_sets) <- c("AR(1)", "PCA", "Large")
-
 master_results <- list()
 
 cat("Starting Full Table 2 Replication: 2000 to 2020\n")
