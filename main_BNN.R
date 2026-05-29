@@ -57,6 +57,7 @@ total_months <- length(oos_dates)
 
 info_sets <- c("AR1", "PCA", "L") 
 names(info_sets) <- c("AR(1)", "PCA", "Large")
+
 master_results <- list()
 
 cat("Starting Full Table 2 Replication: 2000 to 2020\n")
@@ -88,7 +89,11 @@ for (info_name in names(info_sets)) {
     
     source(paste0(w.dir, "functions/data_designmat.R"))
     
-    # Force R to maintain dimensions for single-column (AR1) datasets
+    if (length(X) == 0) {
+      stop(sprintf("\nCRITICAL ERROR: data_designmat.R returned an empty dataset for info = '%s'.\nPlease open data_designmat.R and check what exact string it expects for the %s model.", info, info_name))
+    }
+    
+    # Force R to maintain dimensions
     X <- as.matrix(X)
     if (is.null(dim(Xho))) Xho <- matrix(Xho, nrow = 1)
     
@@ -110,22 +115,20 @@ for (info_name in names(info_sets)) {
     N  <- nrow(XX)         
     R  <- length(acf_set) 
     
-    # Dynamically find max dimension size to support small K (like AR1)
     max_cols <- max(K, M)
     
     MM <- c(K, rep(M, Q))
     k_draw <- k.V <- array(0,dim=c(K,M,Q))
     y.hat <- array(0,dim=c(N,M,Q)); yho.hat <- array(0,dim=c(Nho,M,Q))
     
-    # Use max_cols for the second dimension layout
     X.hat <- array(0,dim=c(N,max_cols,QQ)); Xho.hat <- array(0,dim=c(Nho,max_cols,QQ))
     X.hat[,1:K,1] <- X; Xho.hat[,1:K,1] <- Xho
     
     k_draw[,,1] <- t(matrix(runif(K*M, 0, 1), M, K))
     
-    # Matrix multiplication strictly on the K available columns
-    y.hat[,,1]   <- X.hat[,1:M,2]   <- X.hat[,1:K,1]%*%as.matrix(k_draw[,,1])/K
-    yho.hat[,,1] <- Xho.hat[,1:M,2] <- Xho.hat[,1:K,1]%*%as.matrix(k_draw[,,1])/K
+    # EXPLICIT DIMENSION LOCKS to prevent 1x20 matrices from turning into 20x1 vectors
+    y.hat[,,1]   <- X.hat[,1:M,2]   <- matrix(X.hat[,1:K,1], nrow=N, ncol=K) %*% matrix(k_draw[,,1], nrow=K, ncol=M) / K
+    yho.hat[,,1] <- Xho.hat[,1:M,2] <- matrix(Xho.hat[,1:K,1], nrow=Nho, ncol=K) %*% matrix(k_draw[,,1], nrow=K, ncol=M) / K
     k.V[,,1] <- matrix(1e-10, K, M)
     
     XX.hat<- cbind(X,X.hat[,1:M,QQ])
@@ -227,8 +230,9 @@ for (info_name in names(info_sets)) {
           accept <- !identical(as.vector(k_star),as.vector(k_draw[,nr2,nr1]))
           if(accept){
             k_draw[1:MM[nr1],nr2,nr1] <- k_star 
-            y.hat[,nr2,nr1] <- X.hat[,1:MM[nr1],nr1]%*%k_star    
-            yho.hat[,nr2,nr1] <- Xho.hat[,1:MM[nr1],nr1]%*%k_star 
+            # EXPLICIT DIMENSION LOCKS inside HMC updates
+            y.hat[,nr2,nr1] <- matrix(X.hat[,1:MM[nr1],nr1], nrow=N, ncol=MM[nr1]) %*% as.matrix(k_star)    
+            yho.hat[,nr2,nr1] <- matrix(Xho.hat[,1:MM[nr1],nr1], nrow=Nho, ncol=MM[nr1]) %*% as.matrix(k_star) 
             acc.k[,nr2,nr1] <- acc.k[,nr2,nr1]+1
           }
         } 
@@ -245,7 +249,8 @@ for (info_name in names(info_sets)) {
       for (nr2 in seq_len(M)) {
         for (rr in seq_len(R)){
           X.hat[ , nr2, QQ] <- acf_set[[rr]][["func"]](y.hat[,nr2,1])
-          fit.nr <- as.matrix(X.hat[,1:MM[QQ],QQ])%*%b_draw
+          # EXPLICIT DIMENSION LOCK for final activation function
+          fit.nr <- matrix(X.hat[,1:MM[QQ],QQ], nrow=N, ncol=MM[QQ]) %*% b_draw
           lik <- sum(dnorm(y.nolin, fit.nr, sqrt(sig2_draw), log = TRUE)) 
           prior <- log(1/R); post.fc[rr] <- lik + prior 
         }
@@ -256,7 +261,7 @@ for (info_name in names(info_sets)) {
         acf_draw[nr2] <- fc.slct
       }
       
-      fit_nn <- X.hat[,1:M,QQ]%*%b_draw
+      fit_nn <- matrix(X.hat[,1:M,QQ], nrow=N, ncol=M) %*% b_draw
       fit_nn <- fit_nn - mean(fit_nn)
       fit_full <- fit_lin + fit_nn
       eps <-  y - fit_full    
@@ -275,7 +280,7 @@ for (info_name in names(info_sets)) {
       
       if(irep %in% save.set){
         save.ind <- save.ind + 1
-        pred_m <- as.numeric(Xho%*%g_draw + Xho.hat[,1:M,QQ]%*%b_draw)  
+        pred_m <- as.numeric(Xho%*%g_draw + matrix(Xho.hat[,1:M,QQ], nrow=Nho, ncol=M) %*% b_draw)  
         if(sv){
           pred_h <- svdraw$para[,"mu"] + svdraw$phi*(ht_draw[N] - svdraw$mu) + rnorm(1, 0, svdraw$sigma)
           pred_V <- exp(pred_h)
