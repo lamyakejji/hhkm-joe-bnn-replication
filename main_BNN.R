@@ -31,9 +31,9 @@ Rcpp::sourceCpp(paste0(w.dir,"functions/get_post_grad_k.cpp"))
 ###----------------------- Master Configurations ----------------------------###
 ###--------------------------------------------------------------------------###
 mcmc.setup <- list(
-  "nsave"   =  1000,
-  "nburn"   =  1000,
-  "nthin"   =  2,
+  "nsave"   =  10,
+  "nburn"   =  10,
+  "nthin"   =  1,
   "nuts"    =  FALSE     
 )
 
