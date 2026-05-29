@@ -179,10 +179,12 @@ for (t in 1:total_months) {
   ht_draw <- log(sig2_draw)
   acf_draw <- rep(1,M) 
   nuts.eps <- rep(0.0001,Q)
+  
   par_list <- list(list(M_adapt = 1, M_diag = NULL))[rep(1,M)]
   par_list <- list(par_list)[rep(1,Q)]
   
   pred_store <- matrix(NA, nsave, Nho)
+  g_store    <- matrix(NA, nsave, K)
   
   ###-------------------- START: MCMC estimation loop -----------------------###
   for (irep in seq_len(ntot)){
@@ -322,8 +324,10 @@ for (t in 1:total_months) {
       }
       pred_draw <- pred_m + rnorm(Nho,0,sqrt(pred_V)) 
       pred_store[save.ind,] <- pred_draw 
+      g_store[save.ind,]    <- as.numeric(g_draw)
     }
-  } # End of 3000 MCMC loop
+    
+  } # End of MCMC loop
   
   ###------------------------------------------------------------------------###
   ###----------- Extract Final Forecasts for the current month --------------###
@@ -333,7 +337,7 @@ for (t in 1:total_months) {
   point_forecasts[t] <- mean(pred_store)
   predictive_densities[, t] <- pred_store[, 1]
   
-} # End of 20-year expanding window loop
+} # End of expanding window loop
 
 end_time_total <- Sys.time()
 cat("\nEstimation Complete. Total Time:", round(as.numeric(difftime(end_time_total, start_time_total, units="mins")), 2), "mins\n")
