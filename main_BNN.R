@@ -61,6 +61,7 @@ names(info_sets) <- c("AR(1)", "PCA", "Large")
 master_results <- list()
 
 cat("Starting Full Table 2 Replication: 2000 to 2020\n")
+cat("Warning: This will take several hours.\n")
 cat("---------------------------------------------------\n")
 
 start_time_total <- Sys.time()
@@ -82,19 +83,18 @@ for (info_name in names(info_sets)) {
   ###------------------------------------------------------------------------###
   ###----------------- INNER LOOP: Expanding Window MCMC --------------------###
   ###------------------------------------------------------------------------###
-for (t in 1:total_months) {
-      hout <- oos_dates[t]
-      cat(sprintf("[%d/%d] Estimating hold-out period: %.3f...\n", t, total_months, hout))
-      
-      source(paste0(w.dir, "functions/data_designmat.R"))
-      
-      # ---> NEW FIX: Prevent R from dropping dimensions on single-column AR(1) data <---
-      X <- as.matrix(X)
-      if (is.null(dim(Xho))) Xho <- matrix(Xho, nrow = 1)
-      # ---------------------------------------------------------------------------------
-      
-      if(M.lbl == "K") M <- K else M <- as.numeric(M)
-      bnn.setup$M <- M
+  for (t in 1:total_months) {
+    hout <- oos_dates[t]
+    cat(sprintf("[%d/%d] Estimating hold-out period: %.3f...\n", t, total_months, hout))
+    
+    source(paste0(w.dir, "functions/data_designmat.R"))
+    
+    # Force R to maintain dimensions for single-column (AR1) datasets
+    X <- as.matrix(X)
+    if (is.null(dim(Xho))) Xho <- matrix(Xho, nrow = 1)
+    
+    if(M.lbl == "K") M <- K else M <- as.numeric(M)
+    bnn.setup$M <- M
     
     list2env(bnn.setup, globalenv())
     
@@ -111,20 +111,20 @@ for (t in 1:total_months) {
     N  <- nrow(XX)         
     R  <- length(acf_set) 
     
-    # FIX: Dynamically find max dimension size to support small K (like AR1)
+    # Dynamically find max dimension size to support small K (like AR1)
     max_cols <- max(K, M)
     
     MM <- c(K, rep(M, Q))
     k_draw <- k.V <- array(0,dim=c(K,M,Q))
     y.hat <- array(0,dim=c(N,M,Q)); yho.hat <- array(0,dim=c(Nho,M,Q))
     
-    # FIX: Use max_cols for the second dimension layout
+    # Use max_cols for the second dimension layout
     X.hat <- array(0,dim=c(N,max_cols,QQ)); Xho.hat <- array(0,dim=c(Nho,max_cols,QQ))
     X.hat[,1:K,1] <- X; Xho.hat[,1:K,1] <- Xho
     
     k_draw[,,1] <- t(matrix(runif(K*M, 0, 1), M, K))
     
-    # FIX: Ensure matrix multiplication targets the specific K columns initialized
+    # Matrix multiplication strictly on the K available columns
     y.hat[,,1]   <- X.hat[,1:M,2]   <- X.hat[,1:K,1]%*%as.matrix(k_draw[,,1])/K
     yho.hat[,,1] <- Xho.hat[,1:M,2] <- Xho.hat[,1:K,1]%*%as.matrix(k_draw[,,1])/K
     k.V[,,1] <- matrix(1e-10, K, M)
@@ -343,7 +343,7 @@ results_df$LPL_Difference <- round(results_df$Absolute_LPL - ar1_lpl, 2)
 
 # 4. Format absolute numbers for clarity
 results_df$Absolute_RMSE <- round(results_df$Absolute_RMSE, 3)
-results_df$Absolute_LPL  = round(results_df$Absolute_LPL, 3)
+results_df$Absolute_LPL  <- round(results_df$Absolute_LPL, 3)
 
 print(results_df, row.names = FALSE)
 
