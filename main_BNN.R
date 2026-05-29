@@ -373,28 +373,80 @@ cat("Table 2 Metrics saved to:", table2_file, "\n")
 ###---------------------- Generate Rolling Plots ----------------------------###
 ###--------------------------------------------------------------------------###
 
-# Convert dates for plotting
 plot_dates <- as.yearmon(oos_dates)
 
-# Calculate 12-month rolling RMSE and LPL
-rolling_rmse <- sqrt(rollapply(squared_errors, width = 12, FUN = mean, align = "right", fill = NA))
-rolling_lpl  <- rollapply(lpl_scores, width = 12, FUN = mean, align = "right", fill = NA)
+# Only calculate and plot rolling metrics if we have at least 12 months of data
+if (total_months >= 12) {
+  
+  rolling_rmse <- sqrt(rollapply(squared_errors, width = 12, FUN = mean, align = "right", fill = NA))
+  rolling_lpl  <- rollapply(lpl_scores, width = 12, FUN = mean, align = "right", fill = NA)
+  
+  png("results/Rolling_RMSE_INDPRO.png", width = 800, height = 500, res = 120)
+  plot(plot_dates, rolling_rmse, type = "l", col = "darkred", lwd = 2,
+       main = "Rolling RMSE: shlwNNflex (Industrial Production)",
+       ylab = "RMSE", xlab = "Year")
+  grid()
+  dev.off()
+  
+  png("results/Rolling_LPL_INDPRO.png", width = 800, height = 500, res = 120)
+  plot(plot_dates, rolling_lpl, type = "l", col = "darkblue", lwd = 2,
+       main = "Average LPL: shlwNNflex (Industrial Production)",
+       ylab = "Log Predictive Likelihood", xlab = "Year")
+  grid()
+  dev.off()
+  
+  cat("Rolling plots saved to results folder.\n")
+  
+} else {
+  
+  # For short tests, just use dummy NA vectors to prevent saveRDS from crashing later
+  rolling_rmse <- rep(NA, total_months)
+  rolling_lpl  <- rep(NA, total_months)
+  cat("Notice: Test window too short (< 12 months) for rolling plots. Skipped plotting.\n")
+  
+}
 
-# Plot and save Rolling RMSE
-png("results/Rolling_RMSE_INDPRO.png", width = 800, height = 500, res = 120)
-plot(plot_dates, rolling_rmse, type = "l", col = "darkred", lwd = 2,
-     main = "Rolling RMSE: shlwNNflex (Industrial Production)",
-     ylab = "RMSE", xlab = "Year")
-grid()
-dev.off()
+###--------------------------------------------------------------------------###
+###----------------- Proof of Concept: Variable Importance ------------------###
+###--------------------------------------------------------------------------###
+# Ensure we have the column names from your FRED-MD dataset
+var_names <- colnames(X)
+if(is.null(var_names)) var_names <- paste0("Var_", 1:ncol(X))
 
-# Plot and save Rolling Average LPL
-png("results/Rolling_LPL_INDPRO.png", width = 800, height = 500, res = 120)
-plot(plot_dates, rolling_lpl, type = "l", col = "darkblue", lwd = 2,
-     main = "Average LPL: shlwNNflex (Industrial Production)",
-     ylab = "Log Predictive Likelihood", xlab = "Year")
-grid()
-dev.off()
+# 1. Extract the linear weights (g_store)
+# We take the absolute value because a strong negative effect is just as 
+# "important" as a strong positive effect.
+abs_weights <- abs(g_store)
+
+# 2. Calculate the posterior mean across all 1000 MCMC draws
+posterior_means <- colMeans(abs_weights)
+
+# 3. Create a clean data frame for sorting
+importance_df <- data.frame(
+  Variable = var_names,
+  Importance = posterior_means
+)
+
+# 4. Sort to find the Top 15 absolute drivers
+top_drivers <- importance_df[order(-importance_df$Importance), ][1:15, ]
+
+# 5. Plot the Results and Save to /results
+png("results/Variable_Importance_INDPRO.png", width = 800, height = 600, res = 120)
+
+par(mar = c(5, 8, 4, 2) + 0.1) # Adjust margins for long variable names
+barplot(rev(top_drivers$Importance), 
+        names.arg = rev(top_drivers$Variable), 
+        horiz = TRUE, 
+        las = 1, 
+        col = "steelblue", 
+        border = NA,
+        main = "Top 15 Macroeconomic Drivers (Linear Shrinkage)",
+        xlab = "Posterior Mean of Absolute Weight")
+grid(nx = NULL, ny = NA, col = "gray", lty = "dotted")
+
+dev.off() # This safely closes the file and saves it to the hard drive
+
+cat("Variable Importance plot successfully saved to: results/Variable_Importance_INDPRO.png\n")
 
 ###--------------------------------------------------------------------------###
 ###------------------------- Save Master Raw Data ---------------------------###
