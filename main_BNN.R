@@ -269,7 +269,7 @@ for (info_name in names(info_sets)) {
       }
       sig2_draw[sig2_draw > 20*sd(y)] <- 20*sd(y) 
       
-      if(irep %in%% save.set){
+      if(irep %in% save.set){
         save.ind <- save.ind + 1
         pred_m <- as.numeric(Xho%*%g_draw + Xho.hat[,1:M,QQ]%*%b_draw)  
         if(sv){
