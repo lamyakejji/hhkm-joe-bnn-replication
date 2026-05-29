@@ -82,14 +82,19 @@ for (info_name in names(info_sets)) {
   ###------------------------------------------------------------------------###
   ###----------------- INNER LOOP: Expanding Window MCMC --------------------###
   ###------------------------------------------------------------------------###
-  for (t in 1:total_months) {
-    hout <- oos_dates[t]
-    cat(sprintf("[%d/%d] Estimating hold-out period: %.3f...\n", t, total_months, hout))
-    
-    source(paste0(w.dir, "functions/data_designmat.R"))
-    
-    if(M.lbl == "K") M <- K else M <- as.numeric(M)
-    bnn.setup$M <- M
+for (t in 1:total_months) {
+      hout <- oos_dates[t]
+      cat(sprintf("[%d/%d] Estimating hold-out period: %.3f...\n", t, total_months, hout))
+      
+      source(paste0(w.dir, "functions/data_designmat.R"))
+      
+      # ---> NEW FIX: Prevent R from dropping dimensions on single-column AR(1) data <---
+      X <- as.matrix(X)
+      if (is.null(dim(Xho))) Xho <- matrix(Xho, nrow = 1)
+      # ---------------------------------------------------------------------------------
+      
+      if(M.lbl == "K") M <- K else M <- as.numeric(M)
+      bnn.setup$M <- M
     
     list2env(bnn.setup, globalenv())
     
