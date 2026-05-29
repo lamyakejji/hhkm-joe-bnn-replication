@@ -51,8 +51,8 @@ bnn.setup <- list(
   "t0.sig"      = 3, "S0.sig" = 0.3               
 )
 
-# Full 20-year out-of-sample window
-oos_dates <- seq(2000, 2020 + 11/12, 1/12)
+# ---> CHANGED: 1-Month Test Window <---
+oos_dates <- c(2000.000)
 total_months <- length(oos_dates)
 
 info_sets <- c("AR1", "PCA", "L") 
@@ -60,8 +60,7 @@ names(info_sets) <- c("AR(1)", "PCA", "Large")
 
 master_results <- list()
 
-cat("Starting Full Table 2 Replication: 2000 to 2020\n")
-cat("Warning: This will take several hours.\n")
+cat("Starting 1-Month Test Run (Jan 2000)\n")
 cat("---------------------------------------------------\n")
 
 start_time_total <- Sys.time()
@@ -296,7 +295,7 @@ for (info_name in names(info_sets)) {
     actual_holdouts[t] <- as.numeric(yho) 
     point_forecasts[t] <- mean(pred_store)
     predictive_densities[, t] <- pred_store[, 1]
-  } # End 20-year loop
+  } # End 1-month loop
   
   sq_errors <- (actual_holdouts - point_forecasts)^2
   info_rmse <- sqrt(mean(sq_errors, na.rm = TRUE))
@@ -309,14 +308,19 @@ for (info_name in names(info_sets)) {
   }
   info_lpl <- mean(lpl_scores, na.rm = TRUE)
   
+  # ---> CHANGED: Save arrays to memory for inline plotting <---
+  var_names <- colnames(X)
+  if(is.null(var_names)) var_names <- paste0("Var_", 1:ncol(X))
+  
   master_results[[info_name]] <- list(
     RMSE = info_rmse,
     LPL = info_lpl,
     actuals = actual_holdouts,
-    forecasts = point_forecasts
+    forecasts = point_forecasts,
+    densities = predictive_densities,
+    g_store = g_store,
+    var_names = var_names
   )
-  
-  saveRDS(master_results[[info_name]], file = paste0("results/OOS_", info_name, "_shlwNNflex.rds"))
   
 } # End Info Set Loop
 
@@ -326,30 +330,70 @@ end_time_total <- Sys.time()
 ###---------------------- Generate Table 2 Comparison -----------------------###
 ###--------------------------------------------------------------------------###
 cat("\n\n===================================================================\n")
-cat("      REPLICATION RESULTS: Table 2 Comparison (INDPRO_mom)         \n")
+cat("      REPLICATION RESULTS: 1-Month Test (INDPRO_mom)               \n")
 cat("===================================================================\n")
 cat(sprintf("Total Estimation Time: %.2f mins\n\n", as.numeric(difftime(end_time_total, start_time_total, units="mins"))))
 
-# 1. Create the base dataframe with Absolute values
 results_df <- data.frame(
   Info_Set = names(master_results),
   Absolute_RMSE = sapply(master_results, function(x) x$RMSE),
   Absolute_LPL  = sapply(master_results, function(x) x$LPL)
 )
 
-# 2. Isolate the AR(1) benchmark metrics
 ar1_rmse <- results_df$Absolute_RMSE[results_df$Info_Set == "AR(1)"]
 ar1_lpl  <- results_df$Absolute_LPL[results_df$Info_Set == "AR(1)"]
 
-# 3. Calculate Relative Metrics (Relative RMSE and LPL Difference)
 results_df$Relative_RMSE  <- round(results_df$Absolute_RMSE / ar1_rmse, 2)
 results_df$LPL_Difference <- round(results_df$Absolute_LPL - ar1_lpl, 2)
 
-# 4. Format absolute numbers for clarity
 results_df$Absolute_RMSE <- round(results_df$Absolute_RMSE, 3)
 results_df$Absolute_LPL  <- round(results_df$Absolute_LPL, 3)
 
 print(results_df, row.names = FALSE)
 
-write.csv(results_df, "results/Table2_Full_Replication.csv", row.names = FALSE)
-cat("\nResults saved to results/Table2_Full_Replication.csv\n")
+
+###--------------------------------------------------------------------------###
+###------------------------- Generate Inline Plots --------------------------###
+###--------------------------------------------------------------------------###
+cat("\nRendering inline plots...\n")
+
+# 1. Plot Predictive Densities (Side-by-side)
+par(mfrow = c(1, 3)) # Arrange 3 plots in one row
+for (info_name in names(master_results)) {
+  res <- master_results[[info_name]]
+  dens <- density(res$densities[, 1])
+  
+  plot(dens, main = paste(info_name, "Predictive Density"),
+       xlab = "INDPRO_mom", ylab = "Density", col = "darkblue", lwd = 2)
+  
+  # Draw a vertical line for the true actual value
+  abline(v = res$actuals[1], col = "red", lwd = 2, lty = 2)
+  
+  if(info_name == "AR(1)") {
+    legend("topleft", legend = c("Density", "Actual"), col = c("darkblue", "red"), 
+           lty = c(1, 2), lwd = 2, bty = "n")
+  }
+}
+
+# 2. Plot Variable Importance (Only for the 'Large' dataset)
+if ("Large" %in% names(master_results)) {
+  par(mfrow = c(1, 1)) # Reset to a single plot layout
+  par(mar = c(5, 8, 4, 2) + 0.1) 
+  
+  g_weights <- abs(master_results[["Large"]]$g_store)
+  post_means <- colMeans(g_weights)
+  
+  imp_df <- data.frame(
+    Variable = master_results[["Large"]]$var_names,
+    Importance = post_means
+  )
+  
+  top_drivers <- imp_df[order(-imp_df$Importance), ][1:15, ]
+  
+  barplot(rev(top_drivers$Importance), 
+          names.arg = rev(top_drivers$Variable), 
+          horiz = TRUE, las = 1, col = "steelblue", border = NA,
+          main = "Top 15 Drivers: Large Dataset (Jan 2000)",
+          xlab = "Posterior Mean of Absolute Weight")
+  grid(nx = NULL, ny = NA, col = "gray", lty = "dotted")
+}
