@@ -26,7 +26,6 @@ Rcpp::sourceCpp(paste0(w.dir,"functions/get_post_grad_k.cpp"))
 ###--------------------------------------------------------------------------###
 ###----------------------- Master Configurations ----------------------------###
 ###--------------------------------------------------------------------------###
-# Set to full 1000 burn / 1000 save for replication
 mcmc.setup <- list(
   "nsave"   =  1000,
   "nburn"   =  1000,
@@ -56,15 +55,12 @@ bnn.setup <- list(
 oos_dates <- seq(2000, 2020 + 11/12, 1/12)
 total_months <- length(oos_dates)
 
-# We will loop over these three dataset sizes
-info_sets <- c("AR", "F", "L") # AR(1), PCA(Factors), Large
+info_sets <- c("AR", "F", "L") 
 names(info_sets) <- c("AR(1)", "PCA", "Large")
 
-# Master storage list for all results
 master_results <- list()
 
 cat("Starting Full Table 2 Replication: 2000 to 2020\n")
-cat("Warning: This will take several hours.\n")
 cat("---------------------------------------------------\n")
 
 start_time_total <- Sys.time()
@@ -90,7 +86,6 @@ for (info_name in names(info_sets)) {
     hout <- oos_dates[t]
     cat(sprintf("[%d/%d] Estimating hold-out period: %.3f...\n", t, total_months, hout))
     
-    # Source data with the current 'info' setting
     source(paste0(w.dir, "functions/data_designmat.R"))
     
     if(M.lbl == "K") M <- K else M <- as.numeric(M)
@@ -111,15 +106,22 @@ for (info_name in names(info_sets)) {
     N  <- nrow(XX)         
     R  <- length(acf_set) 
     
+    # FIX: Dynamically find max dimension size to support small K (like AR1)
+    max_cols <- max(K, M)
+    
     MM <- c(K, rep(M, Q))
     k_draw <- k.V <- array(0,dim=c(K,M,Q))
     y.hat <- array(0,dim=c(N,M,Q)); yho.hat <- array(0,dim=c(Nho,M,Q))
-    X.hat <- array(0,dim=c(N,K,QQ)); Xho.hat <- array(0,dim=c(Nho,K,QQ))
-    X.hat[,,1] <- X; Xho.hat[,,1] <- Xho
+    
+    # FIX: Use max_cols for the second dimension layout
+    X.hat <- array(0,dim=c(N,max_cols,QQ)); Xho.hat <- array(0,dim=c(Nho,max_cols,QQ))
+    X.hat[,1:K,1] <- X; Xho.hat[,1:K,1] <- Xho
     
     k_draw[,,1] <- t(matrix(runif(K*M, 0, 1), M, K))
-    y.hat[,,1]   <- X.hat[,1:M,2]   <- X.hat[,,1]%*%as.matrix(k_draw[,,1])/K
-    yho.hat[,,1] <- Xho.hat[,1:M,2] <- Xho.hat[,,1]%*%as.matrix(k_draw[,,1])/K
+    
+    # FIX: Ensure matrix multiplication targets the specific K columns initialized
+    y.hat[,,1]   <- X.hat[,1:M,2]   <- X.hat[,1:K,1]%*%as.matrix(k_draw[,,1])/K
+    yho.hat[,,1] <- Xho.hat[,1:M,2] <- Xho.hat[,1:K,1]%*%as.matrix(k_draw[,,1])/K
     k.V[,,1] <- matrix(1e-10, K, M)
     
     XX.hat<- cbind(X,X.hat[,1:M,QQ])
@@ -267,7 +269,7 @@ for (info_name in names(info_sets)) {
       }
       sig2_draw[sig2_draw > 20*sd(y)] <- 20*sd(y) 
       
-      if(irep %in% save.set){
+      if(irep %in= save.set){
         save.ind <- save.ind + 1
         pred_m <- as.numeric(Xho%*%g_draw + Xho.hat[,1:M,QQ]%*%b_draw)  
         if(sv){
@@ -280,14 +282,13 @@ for (info_name in names(info_sets)) {
         pred_store[save.ind,] <- pred_draw 
         g_store[save.ind,] <- as.numeric(g_draw)
       }
-    } # End of Inner MCMC
+    } # End Inner MCMC
     
     actual_holdouts[t] <- as.numeric(yho) 
     point_forecasts[t] <- mean(pred_store)
     predictive_densities[, t] <- pred_store[, 1]
   } # End 20-year loop
   
-  # Calculate Metrics for this Info Set
   sq_errors <- (actual_holdouts - point_forecasts)^2
   info_rmse <- sqrt(mean(sq_errors, na.rm = TRUE))
   
@@ -299,7 +300,6 @@ for (info_name in names(info_sets)) {
   }
   info_lpl <- mean(lpl_scores, na.rm = TRUE)
   
-  # Save to master list
   master_results[[info_name]] <- list(
     RMSE = info_rmse,
     LPL = info_lpl,
@@ -307,35 +307,12 @@ for (info_name in names(info_sets)) {
     forecasts = point_forecasts
   )
   
-  # Export raw data for this specific run just in case session crashes
   saveRDS(master_results[[info_name]], file = paste0("results/OOS_", info_name, "_shlwNNflex.rds"))
   
 } # End Info Set Loop
 
 end_time_total <- Sys.time()
 
-###--------------------------------------------------------------------------###
-###---------------------- Generate Table 2 Comparison -----------------------###
-###--------------------------------------------------------------------------###
-cat("\n\n===================================================================\n")
-cat("      REPLICATION RESULTS: Table 2 Comparison (INDPRO_mom)         \n")
-cat("===================================================================\n")
-cat(sprintf("Total Estimation Time: %.2f mins\n\n", as.numeric(difftime(end_time_total, start_time_total, units="mins"))))
-
-# Note: The paper reports Relative RMSE and LPL differences. 
-# We print the absolute values here. You should see performance improve 
-# (Lower RMSE, Higher LPL) as you move from AR(1) -> PCA -> Large.
-
-results_df <- data.frame(
-  Info_Set = names(master_results),
-  Absolute_RMSE = sapply(master_results, function(x) round(x$RMSE, 4)),
-  Absolute_LPL = sapply(master_results, function(x) round(x$LPL, 4))
-)
-
-print(results_df, row.names = FALSE)
-
-write.csv(results_df, "results/Table2_Full_Replication.csv", row.names = FALSE)
-cat("\nResults saved to results/Table2_Full_Replication.csv\n")
 ###--------------------------------------------------------------------------###
 ###---------------------- Generate Table 2 Comparison -----------------------###
 ###--------------------------------------------------------------------------###
@@ -355,17 +332,15 @@ results_df <- data.frame(
 ar1_rmse <- results_df$Absolute_RMSE[results_df$Info_Set == "AR(1)"]
 ar1_lpl  <- results_df$Absolute_LPL[results_df$Info_Set == "AR(1)"]
 
-# 3. Calculate the Relative Metrics
+# 3. Calculate Relative Metrics (Relative RMSE and LPL Difference)
 results_df$Relative_RMSE  <- round(results_df$Absolute_RMSE / ar1_rmse, 2)
 results_df$LPL_Difference <- round(results_df$Absolute_LPL - ar1_lpl, 2)
 
-# 4. Clean up the Absolute columns for display
+# 4. Format absolute numbers for clarity
 results_df$Absolute_RMSE <- round(results_df$Absolute_RMSE, 3)
-results_df$Absolute_LPL  <- round(results_df$Absolute_LPL, 3)
+results_df$Absolute_LPL  = round(results_df$Absolute_LPL, 3)
 
-# Print the final formatted table to the console
 print(results_df, row.names = FALSE)
 
-# Save to CSV
 write.csv(results_df, "results/Table2_Full_Replication.csv", row.names = FALSE)
 cat("\nResults saved to results/Table2_Full_Replication.csv\n")
